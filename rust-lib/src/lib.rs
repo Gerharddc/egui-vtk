@@ -16,8 +16,7 @@ unsafe extern "C" {
     fn vtk_is_dirty() -> bool;
 
     fn vtk_mouse_move(x: i32, y: i32);
-    fn vtk_mouse_press(button: i32);
-    fn vtk_mouse_release(button: i32);
+    fn vtk_update_mouse_down(primary: bool, secondary: bool, middle: bool);
     fn vtk_mouse_wheel(delta: i32);
     fn vtk_set_size(width: i32, height: i32);
 }
@@ -77,8 +76,7 @@ impl eframe::App for MyApp {
         let vtk_img = egui::Image::from_texture(SizedTexture::new(
             self.vtk_widget.texture_id(frame),
             [self.vtk_widget.width as f32, self.vtk_widget.height as f32],
-        ))
-        .sense(egui::Sense::all());
+        ));
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -89,7 +87,7 @@ impl eframe::App for MyApp {
             });
 
             egui::Frame::canvas(ui.style()).show(ui, |ui| {
-                let response = ui.add(vtk_img);
+                let response = ui.add(vtk_img.sense(egui::Sense::all()));
 
                 let current_size = response.rect.size();
                 let width = current_size.x as i32;
@@ -123,41 +121,16 @@ impl eframe::App for MyApp {
                             vtk_mouse_wheel(scroll_delta);
                         }
                     }
-                }
 
-                // Use bit fields to pass the current clicked state of the 3 buttons to C
-                //response.clicked()
+                    let (primary, secondary, middle) = ui.input(|i| {
+                        (
+                            i.pointer.primary_down(),
+                            i.pointer.secondary_down(),
+                            i.pointer.middle_down(),
+                        )
+                    });
 
-                if response.drag_started() {
-                    let button = if ui.input(|i| i.pointer.primary_down()) {
-                        0 // Left button
-                    } else if ui.input(|i| i.pointer.secondary_down()) {
-                        1 // Right button
-                    } else if ui.input(|i| i.pointer.middle_down()) {
-                        2 // Middle button
-                    } else {
-                        0 // Default to left
-                    };
-
-                    unsafe {
-                        vtk_mouse_press(button);
-                    }
-                }
-
-                if response.drag_stopped() {
-                    let button = if response.clicked_by(egui::PointerButton::Primary) {
-                        0 // Left button
-                    } else if response.clicked_by(egui::PointerButton::Secondary) {
-                        1 // Right button
-                    } else if response.clicked_by(egui::PointerButton::Middle) {
-                        2 // Middle button
-                    } else {
-                        0 // Default to left
-                    };
-
-                    unsafe {
-                        vtk_mouse_release(button);
-                    }
+                    unsafe { vtk_update_mouse_down(primary, secondary, middle) };
                 }
             });
 

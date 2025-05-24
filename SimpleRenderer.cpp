@@ -20,9 +20,9 @@ namespace
     vtkGenericRenderWindowInteractor *interactor = nullptr;
 
     bool is_dirty = true;
-    bool primary_clicked = false;
-    bool secondary_clicked = false;
-    bool middle_clicked = false;
+    bool primary_down = false;
+    bool secondary_down = false;
+    bool middle_down = false;
     int window_width, window_height;
 
     void IsCurrentCallback(vtkObject *vtkNotUsed(caller), long unsigned int vtkNotUsed(eventId),
@@ -116,39 +116,38 @@ void vtk_mouse_move(int x, int y)
     interactor->InvokeEvent(vtkCommand::MouseMoveEvent);
 }
 
-void vtk_mouse_press(int button)
+void vtk_update_mouse_down(bool primary, bool secondary, bool middle)
 {
     assert(interactor != nullptr);
 
-    switch (button)
+    if (primary_down != primary)
     {
-    case 0: // Left button
-        interactor->InvokeEvent(vtkCommand::LeftButtonPressEvent);
-        break;
-    case 1: // Right button
-        interactor->InvokeEvent(vtkCommand::RightButtonPressEvent);
-        break;
-    case 2: // Middle button
-        interactor->InvokeEvent(vtkCommand::MiddleButtonPressEvent);
-        break;
+        if (primary)
+            interactor->InvokeEvent(vtkCommand::LeftButtonPressEvent);
+        else
+            interactor->InvokeEvent(vtkCommand::LeftButtonReleaseEvent);
+
+        primary_down = primary;
     }
-}
 
-void vtk_mouse_release(int button)
-{
-    assert(interactor != nullptr);
-
-    switch (button)
+    if (secondary_down != secondary)
     {
-    case 0: // Left button
-        interactor->InvokeEvent(vtkCommand::LeftButtonReleaseEvent);
-        break;
-    case 1: // Right button
-        interactor->InvokeEvent(vtkCommand::RightButtonReleaseEvent);
-        break;
-    case 2: // Middle button
-        interactor->InvokeEvent(vtkCommand::MiddleButtonReleaseEvent);
-        break;
+        if (secondary)
+            interactor->InvokeEvent(vtkCommand::RightButtonPressEvent);
+        else
+            interactor->InvokeEvent(vtkCommand::RightButtonReleaseEvent);
+
+        secondary_down = secondary;
+    }
+
+    if (middle_down != middle)
+    {
+        if (middle)
+            interactor->InvokeEvent(vtkCommand::MiddleButtonPressEvent);
+        else
+            interactor->InvokeEvent(vtkCommand::MiddleButtonReleaseEvent);
+
+        middle_down = middle;
     }
 }
 
