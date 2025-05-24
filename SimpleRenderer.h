@@ -11,8 +11,9 @@ extern "C"
     bool vtk_is_dirty();
 
     void vtk_mouse_move(int x, int y);
-    void vtk_mouse_press(int button, int x, int y);
-    void vtk_mouse_release(int button, int x, int y);
+    //void vtk_update_mouse_clicked(bool primary, bool secondary, bool middle);
+    void vtk_mouse_press(int button);
+    void vtk_mouse_release(int button);
     void vtk_mouse_wheel(int delta);
     void vtk_set_size(int width, int height);
 

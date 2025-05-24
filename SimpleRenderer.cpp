@@ -19,20 +19,16 @@ namespace
     vtkGenericOpenGLRenderWindow *render_window = nullptr;
     vtkGenericRenderWindowInteractor *interactor = nullptr;
 
-    bool initialized = false;
-    bool dirty = true;
+    bool is_dirty = true;
+    bool primary_clicked = false;
+    bool secondary_clicked = false;
+    bool middle_clicked = false;
     int window_width, window_height;
-
-    void MakeCurrentCallback(vtkObject *vtkNotUsed(caller), long unsigned int vtkNotUsed(eventId),
-                             void *vtkNotUsed(clientData), void *vtkNotUsed(callData))
-    {
-        // TODO: perhaps we should actually do something here?
-    }
 
     void IsCurrentCallback(vtkObject *vtkNotUsed(caller), long unsigned int vtkNotUsed(eventId),
                            void *vtkNotUsed(clientData), void *callData)
     {
-        // TODO: perhaps we should actually do something here?
+        // We always make sure to have the context for VTK active before calling render on it
         *(static_cast<bool *>(callData)) = true;
     }
 
@@ -40,107 +36,89 @@ namespace
                        void *vtkNotUsed(clientData), void *vtkNotUsed(callData))
     {
         // FIXME: we should also actively send a redraw request to egui
-        dirty = true;
+        is_dirty = true;
     }
-
-    void init(int width, int height)
-    {
-        vtkLogScopeFunction(INFO);
-        vtkLogScopeF(INFO, "do-initialize");
-
-        window_width = width;
-        window_height = height;
-
-        vtkNew<vtkRenderer> renderer;
-        render_window->AddRenderer(renderer);
-        render_window->SetSize(width, height);
-
-        interactor = vtkGenericRenderWindowInteractor::New();
-        interactor->SetRenderWindow(render_window);
-
-        vtkNew<vtkInteractorStyleTrackballCamera> style;
-        interactor->SetInteractorStyle(style);
-
-        vtkNew<vtkCallbackCommand> make_current_cb;
-        make_current_cb->SetCallback(MakeCurrentCallback);
-        render_window->AddObserver(vtkCommand::WindowMakeCurrentEvent, make_current_cb);
-
-        vtkNew<vtkCallbackCommand> is_current_cb;
-        is_current_cb->SetCallback(IsCurrentCallback);
-        render_window->AddObserver(vtkCommand::WindowIsCurrentEvent, is_current_cb);
-
-        vtkNew<vtkCallbackCommand> frame_cb;
-        frame_cb->SetCallback(FrameCallback);
-        render_window->AddObserver(vtkCommand::WindowFrameEvent, frame_cb);
-
-        vtkNew<vtkPolyDataMapper> mapper;
-        vtkNew<vtkActor> actor;
-        actor->SetMapper(mapper);
-        renderer->AddActor(actor);
-        vtkNew<vtkCubeSource> cs;
-        mapper->SetInputConnection(cs->GetOutputPort());
-        actor->RotateX(45.0);
-        actor->RotateY(45.0);
-        actor->GetProperty()->SetColor(0.8, 0.2, 0.2);
-        renderer->ResetCamera();
-        renderer->SetAutomaticLightCreation(true);
-
-        initialized = true;
-    }
-
-    void display()
-    {
-        vtkLogScopeFunction(INFO);
-        vtkLogScopeF(INFO, "do-vtk-render");
-
-        assert(initialized);
-        render_window->Render();
-        dirty = false;
-    }
-
-    void onexit()
-    {
-        initialized = false;
-    }
-
 } // end anon namespace
 
 void vtk_new(LoaderFunc load, int width, int height)
 {
+    vtkLogScopeFunction(INFO);
+    vtkLogScopeF(INFO, "do-initialize");
+
     gladLoadGL(load);
+
+    window_width = width;
+    window_height = height;
     render_window = vtkGenericOpenGLRenderWindow::New();
-    init(width, height);
+
+    vtkNew<vtkRenderer> renderer;
+    render_window->AddRenderer(renderer);
+    render_window->SetSize(width, height);
+
+    interactor = vtkGenericRenderWindowInteractor::New();
+    interactor->SetRenderWindow(render_window);
+
+    vtkNew<vtkInteractorStyleTrackballCamera> style;
+    interactor->SetInteractorStyle(style);
+
+    vtkNew<vtkCallbackCommand> is_current_cb;
+    is_current_cb->SetCallback(IsCurrentCallback);
+    render_window->AddObserver(vtkCommand::WindowIsCurrentEvent, is_current_cb);
+
+    vtkNew<vtkCallbackCommand> frame_cb;
+    frame_cb->SetCallback(FrameCallback);
+    render_window->AddObserver(vtkCommand::WindowFrameEvent, frame_cb);
+
+    vtkNew<vtkPolyDataMapper> mapper;
+    vtkNew<vtkActor> actor;
+    actor->SetMapper(mapper);
+    renderer->AddActor(actor);
+    vtkNew<vtkCubeSource> cs;
+    mapper->SetInputConnection(cs->GetOutputPort());
+    actor->RotateX(45.0);
+    actor->RotateY(45.0);
+    actor->GetProperty()->SetColor(0.8, 0.2, 0.2);
+    renderer->ResetCamera();
+    renderer->SetAutomaticLightCreation(true);
 }
 
 void vtk_destroy()
 {
-    onexit();
+    assert(interactor != nullptr);
+    assert(render_window != nullptr);
+
+    interactor->Delete();
     render_window->Delete();
+
+    interactor = nullptr;
+    render_window = nullptr;
 }
 
 void vtk_paint()
 {
-    display();
+    vtkLogScopeFunction(INFO);
+    vtkLogScopeF(INFO, "do-vtk-render");
+
+    assert(render_window != nullptr);
+    render_window->Render();
+    is_dirty = false;
 }
 
 bool vtk_is_dirty()
 {
-    return dirty;
+    return is_dirty;
 }
 
 void vtk_mouse_move(int x, int y)
 {
-    assert(interactor);
-
+    assert(interactor != nullptr);
     interactor->SetEventPosition(x, y);
     interactor->InvokeEvent(vtkCommand::MouseMoveEvent);
 }
 
-void vtk_mouse_press(int button, int x, int y)
+void vtk_mouse_press(int button)
 {
-    assert(interactor);
-
-    interactor->SetEventPosition(x, y);
+    assert(interactor != nullptr);
 
     switch (button)
     {
@@ -156,11 +134,9 @@ void vtk_mouse_press(int button, int x, int y)
     }
 }
 
-void vtk_mouse_release(int button, int x, int y)
+void vtk_mouse_release(int button)
 {
-    assert(interactor);
-
-    interactor->SetEventPosition(x, y);
+    assert(interactor != nullptr);
 
     switch (button)
     {
@@ -178,7 +154,7 @@ void vtk_mouse_release(int button, int x, int y)
 
 void vtk_mouse_wheel(int delta)
 {
-    assert(interactor);
+    assert(interactor != nullptr);
 
     if (delta > 0)
     {
@@ -192,7 +168,7 @@ void vtk_mouse_wheel(int delta)
 
 void vtk_set_size(int width, int height)
 {
-    assert(initialized);
+    assert(render_window != nullptr);
 
     window_width = width;
     window_height = height;

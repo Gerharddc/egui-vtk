@@ -16,8 +16,8 @@ unsafe extern "C" {
     fn vtk_is_dirty() -> bool;
 
     fn vtk_mouse_move(x: i32, y: i32);
-    fn vtk_mouse_press(button: i32, x: i32, y: i32);
-    fn vtk_mouse_release(button: i32, x: i32, y: i32);
+    fn vtk_mouse_press(button: i32);
+    fn vtk_mouse_release(button: i32);
     fn vtk_mouse_wheel(delta: i32);
     fn vtk_set_size(width: i32, height: i32);
 }
@@ -77,7 +77,8 @@ impl eframe::App for MyApp {
         let vtk_img = egui::Image::from_texture(SizedTexture::new(
             self.vtk_widget.texture_id(frame),
             [self.vtk_widget.width as f32, self.vtk_widget.height as f32],
-        ));
+        ))
+        .sense(egui::Sense::all());
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -88,14 +89,14 @@ impl eframe::App for MyApp {
             });
 
             egui::Frame::canvas(ui.style()).show(ui, |ui| {
-                let response = ui.add(vtk_img.sense(egui::Sense::all()));
+                let response = ui.add(vtk_img);
 
                 let current_size = response.rect.size();
                 let width = current_size.x as i32;
                 let height = current_size.y as i32;
 
                 if width != self.vtk_widget.width || height != self.vtk_widget.height {
-                    println!("Updating size");
+                    println!("Updating size: {:#?}", current_size);
 
                     unsafe {
                         vtk_set_size(width, height);
@@ -111,8 +112,6 @@ impl eframe::App for MyApp {
                         let x = relative_pos.x as i32;
                         let y = relative_pos.y as i32;
 
-                        println!("hover pos: {}, {}", x, y);
-
                         unsafe {
                             vtk_mouse_move(x, y);
                         }
@@ -126,14 +125,10 @@ impl eframe::App for MyApp {
                     }
                 }
 
-                if response.drag_started() {
-                    let pos = response.interact_pointer_pos().unwrap();
-                    let image_rect = response.rect;
-                    let relative_pos = pos - image_rect.min;
-                    let x = relative_pos.x as i32;
-                    let y = relative_pos.y as i32;
+                // Use bit fields to pass the current clicked state of the 3 buttons to C
+                //response.clicked()
 
-                    // Determine which button was pressed
+                if response.drag_started() {
                     let button = if ui.input(|i| i.pointer.primary_down()) {
                         0 // Left button
                     } else if ui.input(|i| i.pointer.secondary_down()) {
@@ -145,18 +140,11 @@ impl eframe::App for MyApp {
                     };
 
                     unsafe {
-                        vtk_mouse_press(button, x, y);
+                        vtk_mouse_press(button);
                     }
                 }
 
                 if response.drag_stopped() {
-                    let pos = response.interact_pointer_pos().unwrap();
-                    let image_rect = response.rect;
-                    let relative_pos = pos - image_rect.min;
-                    let x = relative_pos.x as i32;
-                    let y = relative_pos.y as i32;
-
-                    // Determine which button was released
                     let button = if response.clicked_by(egui::PointerButton::Primary) {
                         0 // Left button
                     } else if response.clicked_by(egui::PointerButton::Secondary) {
@@ -168,7 +156,7 @@ impl eframe::App for MyApp {
                     };
 
                     unsafe {
-                        vtk_mouse_release(button, x, y);
+                        vtk_mouse_release(button);
                     }
                 }
             });
@@ -232,6 +220,8 @@ impl VtkWidget {
 
         unsafe {
             vtk_new(gl_load, width, height);
+
+            // TODO: review this FBO code
 
             let fbo = gl.create_framebuffer().unwrap();
             gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fbo));
