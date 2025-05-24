@@ -94,10 +94,11 @@ namespace
 
 } // end anon namespace
 
-void vtk_new()
+void vtk_new(LoaderFunc load)
 {
+    gladLoadGL(load);
+    //gladLoaderLoadGL();
     externalVTKWidget = ExternalVTKWidget::New();
-    gladLoaderLoadGL();
     handleResize(300, 300);
 }
 
