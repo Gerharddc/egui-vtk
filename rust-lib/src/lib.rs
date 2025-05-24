@@ -10,7 +10,7 @@ type LoaderFunc = extern "C" fn(name: *const c_char) -> *const c_void;
 
 #[link(name = "vtktest")]
 unsafe extern "C" {
-    fn vtk_new(load: LoaderFunc);
+    fn vtk_new(load: LoaderFunc, width: i32, height: i32);
     fn vtk_destroy();
     fn vtk_paint();
     fn vtk_is_dirty() -> bool;
@@ -88,7 +88,7 @@ impl eframe::App for MyApp {
 
     fn on_exit(&mut self, gl: Option<&glow::Context>) {
         if let Some(gl) = gl {
-            self.vtk_widget.destroy(gl);
+            unsafe { self.vtk_widget.destroy(gl) }
         }
     }
 }
@@ -102,24 +102,24 @@ struct VtkWidget {
     egui_texture_id: Option<egui::TextureId>,
 }
 
-struct Holder {
+struct ProcFnHolder {
     get_proc_address: &'static dyn Fn(&std::ffi::CStr) -> *const std::ffi::c_void,
 }
 
-impl Debug for Holder {
+impl Debug for ProcFnHolder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Just some Holder...")
+        f.write_str("Nothing to see here...")
     }
 }
 
-unsafe impl Sync for Holder {}
-unsafe impl Send for Holder {}
+unsafe impl Sync for ProcFnHolder {}
+unsafe impl Send for ProcFnHolder {}
 
-static CELL: OnceLock<Holder> = OnceLock::new();
+static PROC_FN_CELL: OnceLock<ProcFnHolder> = OnceLock::new();
 
 pub extern "C" fn gl_load(name: *const c_char) -> *const c_void {
     let name = unsafe { CStr::from_ptr(name) };
-    let holder = CELL.get().unwrap();
+    let holder = PROC_FN_CELL.get().unwrap();
     (holder.get_proc_address)(name)
 }
 
@@ -130,17 +130,18 @@ impl VtkWidget {
     ) -> Self {
         use glow::HasContext as _;
 
-        CELL.set(Holder {
-            get_proc_address: unsafe { std::mem::transmute(get_proc_address) },
-        })
-        .unwrap();
-        unsafe { vtk_new(gl_load) };
-        // FIXME: make the cell empty again
-
         let width = 300;
         let height = 300;
 
+        PROC_FN_CELL
+            .set(ProcFnHolder {
+                get_proc_address: unsafe { std::mem::transmute(get_proc_address) },
+            })
+            .unwrap();
+
         unsafe {
+            vtk_new(gl_load, width, height);
+
             let fbo = gl.create_framebuffer().unwrap();
             gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fbo));
 
@@ -192,6 +193,8 @@ impl VtkWidget {
 
             gl.bind_framebuffer(glow::FRAMEBUFFER, None);
 
+            // FIXME: make the cell empty again
+
             VtkWidget {
                 fbo,
                 texture,
@@ -209,12 +212,13 @@ impl VtkWidget {
             .get_or_insert(frame.register_native_glow_texture(self.texture))
     }
 
-    fn destroy(&self, gl: &glow::Context) {
+    // It is only safe to call this when eframe exists since it likely owns the texture
+    unsafe fn destroy(&self, gl: &glow::Context) {
         use glow::HasContext as _;
 
         unsafe {
             gl.delete_framebuffer(self.fbo);
-            gl.delete_texture(self.texture); // TODO: are we allowed?
+            gl.delete_texture(self.texture);
             gl.delete_renderbuffer(self._depth_rb);
             vtk_destroy()
         }
@@ -229,6 +233,4 @@ impl VtkWidget {
             gl.bind_framebuffer(glow::FRAMEBUFFER, None);
         }
     }
-
-    // TODO: add function to resize VTK
 }

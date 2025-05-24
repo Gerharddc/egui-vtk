@@ -43,51 +43,49 @@ namespace
         dirty = true;
     }
 
+    void init(int width, int height)
+    {
+        vtkLogScopeFunction(INFO);
+        vtkLogScopeF(INFO, "do-initialize");
+
+        vtkNew<vtkRenderer> renderer;
+        render_window->AddRenderer(renderer);
+        render_window->SetSize(width, height);
+
+        vtkNew<vtkCallbackCommand> make_current_cb;
+        make_current_cb->SetCallback(MakeCurrentCallback);
+        render_window->AddObserver(vtkCommand::WindowMakeCurrentEvent, make_current_cb);
+
+        vtkNew<vtkCallbackCommand> is_current_cb;
+        is_current_cb->SetCallback(IsCurrentCallback);
+        render_window->AddObserver(vtkCommand::WindowIsCurrentEvent, is_current_cb);
+
+        vtkNew<vtkCallbackCommand> frame_cb;
+        frame_cb->SetCallback(FrameCallback);
+        render_window->AddObserver(vtkCommand::WindowFrameEvent, frame_cb);
+
+        vtkNew<vtkPolyDataMapper> mapper;
+        vtkNew<vtkActor> actor;
+        actor->SetMapper(mapper);
+        renderer->AddActor(actor);
+        vtkNew<vtkCubeSource> cs;
+        mapper->SetInputConnection(cs->GetOutputPort());
+        actor->RotateX(45.0);
+        actor->RotateY(45.0);
+        actor->GetProperty()->SetColor(0.8, 0.2, 0.2);
+        renderer->ResetCamera();
+        renderer->SetAutomaticLightCreation(true);
+
+        initialized = true;
+    }
+
     void display()
     {
         vtkLogScopeFunction(INFO);
-
-        // TODO: move this to a dedicated init function
-        if (!initialized)
-        {
-            vtkLogScopeF(INFO, "do-initialize");
-
-            vtkNew<vtkRenderer> renderer;
-            render_window->AddRenderer(renderer);
-
-            render_window->SetSize(300, 300);
-            render_window->SetPosition(300, 300);
-
-            vtkNew<vtkCallbackCommand> make_current_cb;
-            make_current_cb->SetCallback(MakeCurrentCallback);
-            render_window->AddObserver(vtkCommand::WindowMakeCurrentEvent, make_current_cb);
-
-            vtkNew<vtkCallbackCommand> is_current_cb;
-            is_current_cb->SetCallback(IsCurrentCallback);
-            render_window->AddObserver(vtkCommand::WindowIsCurrentEvent, is_current_cb);
-
-            vtkNew<vtkCallbackCommand> frame_cb;
-            frame_cb->SetCallback(FrameCallback);
-            render_window->AddObserver(vtkCommand::WindowFrameEvent, frame_cb);
-
-            vtkNew<vtkPolyDataMapper> mapper;
-            vtkNew<vtkActor> actor;
-            actor->SetMapper(mapper);
-            renderer->AddActor(actor);
-            vtkNew<vtkCubeSource> cs;
-            mapper->SetInputConnection(cs->GetOutputPort());
-            actor->RotateX(45.0);
-            actor->RotateY(45.0);
-            actor->GetProperty()->SetColor(0.8, 0.2, 0.2);
-            renderer->ResetCamera();
-            renderer->SetAutomaticLightCreation(true);
-
-            initialized = true;
-        }
-
         vtkLogScopeF(INFO, "do-vtk-render");
-        render_window->Render();
 
+        assert(initialized);
+        render_window->Render();
         dirty = false;
     }
 
@@ -98,10 +96,11 @@ namespace
 
 } // end anon namespace
 
-void vtk_new(LoaderFunc load)
+void vtk_new(LoaderFunc load, int width, int height)
 {
     gladLoadGL(load);
     render_window = vtkGenericOpenGLRenderWindow::New();
+    init(width, height);
 }
 
 void vtk_destroy()
