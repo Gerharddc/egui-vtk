@@ -1,11 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use eframe::egui::Rect;
-use eframe::{egui, egui_glow, glow};
-use egui::mutex::Mutex;
+use eframe::{egui, glow};
 use std::ffi::CStr;
 use std::fmt::Debug;
-use std::sync::Arc;
 use std::sync::OnceLock;
 use std::{ffi::c_void, os::raw::c_char};
 
@@ -24,7 +21,6 @@ pub extern "C" fn main() -> i32 {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([350.0, 380.0]),
         multisampling: 4,
-        depth_buffer: 24,
         renderer: eframe::Renderer::Glow,
         ..Default::default()
     };
@@ -39,9 +35,8 @@ pub extern "C" fn main() -> i32 {
 }
 
 struct MyApp {
-    /// Behind an `Arc<Mutex<…>>` so we can pass it to [`egui::PaintCallback`] and paint later.
-    vtk_widget: Arc<Mutex<VtkWidget>>,
-    angle: f32,
+    vtk_widget: VtkWidget,
+    _angle: f32,
 }
 
 impl MyApp {
@@ -56,24 +51,40 @@ impl MyApp {
             .expect("You need to run eframe with the glow backend");
 
         Self {
-            vtk_widget: Arc::new(Mutex::new(VtkWidget::new(gl, get_proc_address))),
-            angle: 0.0,
+            vtk_widget: VtkWidget::new(gl, get_proc_address),
+            _angle: 0.0,
         }
     }
 }
 
 impl eframe::App for MyApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        use egui::load::SizedTexture;
+
+        self.vtk_widget.paint(frame.gl().unwrap(), 0.0);
+
+        // TODO: do this in a better place
+        if self.vtk_widget.egui_texture_id.is_none() {
+            self.vtk_widget.egui_texture_id =
+                Some(frame.register_native_glow_texture(self.vtk_widget.texture));
+        }
+        let egui_texture_id = self.vtk_widget.egui_texture_id.unwrap();
+
+        let vtk_img = egui::Image::from_texture(SizedTexture::new(
+            egui_texture_id,
+            [self.vtk_widget.width as f32, self.vtk_widget.height as f32],
+        ));
+
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
-                ui.label("The triangle is being painted using ");
-                ui.hyperlink_to("glow", "https://github.com/grovesNL/glow");
+                ui.label("This thing is being painted using ");
+                ui.hyperlink_to("vtk", "https://github.com/grovesNL/glow");
                 ui.label(" (OpenGL).");
             });
 
             egui::Frame::canvas(ui.style()).show(ui, |ui| {
-                self.custom_painting(ui);
+                ui.add(vtk_img);
             });
             ui.label("Drag to rotate!");
         });
@@ -81,33 +92,19 @@ impl eframe::App for MyApp {
 
     fn on_exit(&mut self, gl: Option<&glow::Context>) {
         if let Some(gl) = gl {
-            self.vtk_widget.lock().destroy(gl);
+            self.vtk_widget.destroy(gl);
         }
     }
 }
 
-impl MyApp {
-    fn custom_painting(&mut self, ui: &mut egui::Ui) {
-        let (rect, response) =
-            ui.allocate_exact_size(egui::Vec2::splat(300.0), egui::Sense::drag());
-
-        self.angle += response.drag_motion().x * 0.01;
-
-        // Clone locals so we can move them into the paint callback:
-        let angle = self.angle;
-        let rotating_triangle = self.vtk_widget.clone();
-
-        let callback = egui::PaintCallback {
-            rect,
-            callback: std::sync::Arc::new(egui_glow::CallbackFn::new(move |_info, painter| {
-                rotating_triangle.lock().paint(painter.gl(), angle, rect);
-            })),
-        };
-        ui.painter().add(callback);
-    }
+struct VtkWidget {
+    fbo: glow::NativeFramebuffer,
+    texture: glow::NativeTexture,
+    _depth_rb: glow::NativeRenderbuffer,
+    width: i32,
+    height: i32,
+    egui_texture_id: Option<egui::TextureId>,
 }
-
-struct VtkWidget {}
 
 struct Holder {
     get_proc_address: &'static dyn Fn(&std::ffi::CStr) -> *const std::ffi::c_void,
@@ -132,85 +129,103 @@ pub extern "C" fn gl_load(name: *const c_char) -> *const c_void {
 
 impl VtkWidget {
     fn new(
-        _gl: &glow::Context,
+        gl: &glow::Context,
         get_proc_address: &dyn Fn(&std::ffi::CStr) -> *const std::ffi::c_void,
     ) -> Self {
-        //use glow::HasContext as _;
+        use glow::HasContext as _;
 
         CELL.set(Holder {
             get_proc_address: unsafe { std::mem::transmute(get_proc_address) },
         })
         .unwrap();
         unsafe { vtk_new(gl_load) };
-
         // FIXME: make the cell empty again
 
-        VtkWidget {}
-    }
-
-    fn destroy(&self, _gl: &glow::Context) {
-        //use glow::HasContext as _;
-        unsafe { vtk_destroy() }
-    }
-
-    fn paint(&self, gl: &glow::Context, _angle: f32, rect: Rect) {
-        use glow::HasContext as _;
-
-        println!("Rect: {:#?}", rect);
-        println!(
-            "L: {}, B: {}, W: {}, H: {}",
-            rect.left(),
-            rect.bottom(),
-            rect.width(),
-            rect.height()
-        );
+        let width = 300;
+        let height = 300;
 
         unsafe {
-            // Query current viewport settings
-            let mut viewport = [0; 4];
-            gl.get_parameter_i32_slice(glow::VIEWPORT, &mut viewport);
+            let fbo = gl.create_framebuffer().unwrap();
+            gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fbo));
 
-            // viewport is a slice with 4 values: [x, y, width, height]
-            let x = viewport[0];
-            let y = viewport[1];
-            let width = viewport[2];
-            let height = viewport[3];
-
-            println!(
-                "Current viewport: x={}, y={}, width={}, height={}",
-                x, y, width, height
+            let texture = gl.create_texture().unwrap();
+            gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+            gl.tex_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                glow::RGBA as i32,
+                width,
+                height,
+                0,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelUnpackData::Slice(None),
+            );
+            gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_MIN_FILTER,
+                glow::LINEAR as i32,
+            );
+            gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_MAG_FILTER,
+                glow::LINEAR as i32,
+            );
+            gl.framebuffer_texture_2d(
+                glow::FRAMEBUFFER,
+                glow::COLOR_ATTACHMENT0,
+                glow::TEXTURE_2D,
+                Some(texture),
+                0,
             );
 
-            gl.enable(glow::DEPTH_TEST);
+            let depth_rb = gl.create_renderbuffer().unwrap();
+            gl.bind_renderbuffer(glow::RENDERBUFFER, Some(depth_rb));
+            gl.renderbuffer_storage(glow::RENDERBUFFER, glow::DEPTH_COMPONENT24, width, height);
+            gl.framebuffer_renderbuffer(
+                glow::FRAMEBUFFER,
+                glow::DEPTH_ATTACHMENT,
+                glow::RENDERBUFFER,
+                Some(depth_rb),
+            );
 
-            gl.enable(glow::SCISSOR_TEST);
-            gl.scissor(0, 0, 100, 100);
-            gl.clear_color(0.0, 1.0, 0.0, 1.0);
-            gl.clear(glow::COLOR_BUFFER_BIT);
-            gl.disable(glow::SCISSOR_TEST);
+            assert_eq!(
+                gl.check_framebuffer_status(glow::FRAMEBUFFER),
+                glow::FRAMEBUFFER_COMPLETE
+            );
 
-            gl.clear_depth(1.0);
-            gl.clear(glow::DEPTH_BUFFER_BIT);
+            gl.bind_framebuffer(glow::FRAMEBUFFER, None);
 
+            VtkWidget {
+                fbo,
+                texture,
+                _depth_rb: depth_rb,
+                width,
+                height,
+                egui_texture_id: None,
+            }
+        }
+    }
+
+    fn destroy(&self, gl: &glow::Context) {
+        use glow::HasContext as _;
+
+        unsafe {
+            gl.delete_framebuffer(self.fbo);
+            gl.delete_texture(self.texture); // TODO: are we allowed?
+            gl.delete_renderbuffer(self._depth_rb);
+            vtk_destroy()
+        }
+    }
+
+    fn paint(&self, gl: &glow::Context, _angle: f32) {
+        use glow::HasContext as _;
+
+        unsafe {
+            gl.bind_framebuffer(glow::FRAMEBUFFER, Some(self.fbo));
             vtk_paint();
-
-            gl.disable(glow::DEPTH_TEST);
-
-            // Query current viewport settings
-            let mut viewport = [0; 4];
-            gl.get_parameter_i32_slice(glow::VIEWPORT, &mut viewport);
-
-            // viewport is a slice with 4 values: [x, y, width, height]
-            let x = viewport[0];
-            let y = viewport[1];
-            let width = viewport[2];
-            let height = viewport[3];
-
-            println!(
-                "Current viewport: x={}, y={}, width={}, height={}",
-                x, y, width, height
-            );
-        };
+            gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+        }
     }
 
     // TODO: add function to resize VTK
