@@ -97,7 +97,7 @@ namespace
 void vtk_new(LoaderFunc load)
 {
     gladLoadGL(load);
-    //gladLoaderLoadGL();
+    // gladLoaderLoadGL();
     externalVTKWidget = ExternalVTKWidget::New();
     handleResize(300, 300);
 }
