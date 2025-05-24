@@ -13,6 +13,7 @@
 #include <vtkNew.h>
 #include <vtkPolyDataMapper.h>
 #include <vtkTesting.h>
+#include <vtkProperty.h>
 
 #include "SimpleRenderer.h"
 
@@ -72,7 +73,9 @@ namespace
             mapper->SetInputConnection(cs->GetOutputPort());
             actor->RotateX(45.0);
             actor->RotateY(45.0);
+            actor->GetProperty()->SetColor(0.8, 0.2, 0.2);
             ren->ResetCamera();
+            ren->SetAutomaticLightCreation(true);
 
             initialized = true;
         }

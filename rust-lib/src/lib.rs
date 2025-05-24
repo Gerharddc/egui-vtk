@@ -31,7 +31,7 @@ pub extern "C" fn main() -> i32 {
         let (gl, gl_surface, gl_context, _window, event_loop) = {
             use glutin::{
                 config::{ConfigTemplateBuilder, GlConfig},
-                context::{ContextApi, ContextAttributesBuilder, NotCurrentGlContext},
+                context::{ContextAttributesBuilder, NotCurrentGlContext},
                 display::{GetGlDisplay, GlDisplay},
                 surface::{GlSurface, SwapInterval},
             };
@@ -41,7 +41,7 @@ pub extern "C" fn main() -> i32 {
 
             let event_loop = winit::event_loop::EventLoopBuilder::new().build().unwrap();
             let window_builder = winit::window::WindowBuilder::new()
-                .with_title("Hello triangle!")
+                .with_title("Hello VTK!")
                 .with_inner_size(winit::dpi::LogicalSize::new(300.0, 300.0));
 
             let template = ConfigTemplateBuilder::new();
@@ -66,10 +66,6 @@ pub extern "C" fn main() -> i32 {
 
             let gl_display = gl_config.display();
             let context_attributes = ContextAttributesBuilder::new()
-                .with_context_api(ContextApi::OpenGl(Some(glutin::context::Version {
-                    major: 4,
-                    minor: 1,
-                })))
                 .with_profile(GlProfile::Compatibility)
                 .with_debug(true)
                 .build(raw_window_handle);
