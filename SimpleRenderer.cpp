@@ -1,17 +1,14 @@
 #include <vtk_glad.h>
-#include <ExternalVTKWidget.h>
 #include <vtkActor.h>
 #include <vtkCallbackCommand.h>
 #include <vtkCamera.h>
 #include <vtkCubeSource.h>
-#include <vtkExternalOpenGLRenderWindow.h>
-#include <vtkLight.h>
 #include <vtkLogger.h>
 #include <vtkNew.h>
 #include <vtkPolyDataMapper.h>
-#include <vtkTesting.h>
 #include <vtkProperty.h>
 #include <vtkGenericOpenGLRenderWindow.h>
+#include <vtkRenderer.h>
 
 #include "SimpleRenderer.h"
 
@@ -19,29 +16,38 @@ namespace
 {
     vtkGenericOpenGLRenderWindow *render_window;
     bool initialized = false;
+    bool dirty = true;
+
+    bool is_dirty()
+    {
+        return dirty;
+    }
 
     void MakeCurrentCallback(vtkObject *vtkNotUsed(caller), long unsigned int vtkNotUsed(eventId),
                              void *vtkNotUsed(clientData), void *vtkNotUsed(callData))
     {
-        // std::cout << "TODO: make current\n";
+        // TODO: perhaps we should actually do something here?
     }
 
     void IsCurrentCallback(vtkObject *vtkNotUsed(caller), long unsigned int vtkNotUsed(eventId),
                            void *vtkNotUsed(clientData), void *callData)
     {
-        // std::cout << "TODO: is current\n";
+        // TODO: perhaps we should actually do something here?
         *(static_cast<bool *>(callData)) = true;
     }
 
     void FrameCallback(vtkObject *vtkNotUsed(caller), long unsigned int vtkNotUsed(eventId),
                        void *vtkNotUsed(clientData), void *vtkNotUsed(callData))
     {
-        // std::cout << "TODO: frame\n";
+        // FIXME: we should also actively send a redraw request to egui
+        dirty = true;
     }
 
     void display()
     {
         vtkLogScopeFunction(INFO);
+
+        // TODO: move this to a dedicated init function
         if (!initialized)
         {
             vtkLogScopeF(INFO, "do-initialize");
@@ -81,6 +87,8 @@ namespace
 
         vtkLogScopeF(INFO, "do-vtk-render");
         render_window->Render();
+
+        dirty = false;
     }
 
     void onexit()
@@ -105,4 +113,9 @@ void vtk_destroy()
 void vtk_paint()
 {
     display();
+}
+
+bool vtk_is_dirty()
+{
+    return is_dirty();
 }

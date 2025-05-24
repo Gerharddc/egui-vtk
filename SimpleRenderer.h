@@ -8,6 +8,7 @@ extern "C"
     void vtk_new(LoaderFunc load);
     void vtk_destroy();
     void vtk_paint();
+    bool vtk_is_dirty();
 
 #ifdef __cplusplus
 }

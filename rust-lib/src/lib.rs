@@ -13,6 +13,7 @@ unsafe extern "C" {
     fn vtk_new(load: LoaderFunc);
     fn vtk_destroy();
     fn vtk_paint();
+    fn vtk_is_dirty() -> bool;
 }
 
 #[unsafe(no_mangle)]
@@ -61,17 +62,12 @@ impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         use egui::load::SizedTexture;
 
-        self.vtk_widget.paint(frame.gl().unwrap(), 0.0);
-
-        // TODO: do this in a better place
-        if self.vtk_widget.egui_texture_id.is_none() {
-            self.vtk_widget.egui_texture_id =
-                Some(frame.register_native_glow_texture(self.vtk_widget.texture));
+        if unsafe { vtk_is_dirty() } {
+            self.vtk_widget.paint(frame.gl().unwrap(), 0.0);
         }
-        let egui_texture_id = self.vtk_widget.egui_texture_id.unwrap();
 
         let vtk_img = egui::Image::from_texture(SizedTexture::new(
-            egui_texture_id,
+            self.vtk_widget.texture_id(frame),
             [self.vtk_widget.width as f32, self.vtk_widget.height as f32],
         ));
 
@@ -79,8 +75,8 @@ impl eframe::App for MyApp {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
                 ui.label("This thing is being painted using ");
-                ui.hyperlink_to("vtk", "https://github.com/grovesNL/glow");
-                ui.label(" (OpenGL).");
+                ui.hyperlink_to("vtk", "https://vtk.org/");
+                ui.label(" (VTK).");
             });
 
             egui::Frame::canvas(ui.style()).show(ui, |ui| {
@@ -205,6 +201,12 @@ impl VtkWidget {
                 egui_texture_id: None,
             }
         }
+    }
+
+    fn texture_id(&mut self, frame: &mut eframe::Frame) -> egui::TextureId {
+        *self
+            .egui_texture_id
+            .get_or_insert(frame.register_native_glow_texture(self.texture))
     }
 
     fn destroy(&self, gl: &glow::Context) {
