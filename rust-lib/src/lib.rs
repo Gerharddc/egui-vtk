@@ -95,8 +95,6 @@ pub extern "C" fn main() -> i32 {
             (gl, gl_surface, gl_context, window, event_loop)
         };
 
-        //gl.viewport(0, 0, 300, 300);
-
         use glutin::prelude::GlSurface;
         use winit::event::{Event, WindowEvent};
         let _ = event_loop.run(move |event, elwt| {
@@ -116,6 +114,9 @@ pub extern "C" fn main() -> i32 {
                         vtk_paint();
 
                         gl_surface.swap_buffers(&gl_context).unwrap();
+                    }
+                    WindowEvent::Resized(physical_size) => {
+                        gl.viewport(0, 0, physical_size.width as i32, physical_size.height as i32);
                     }
                     _ => (),
                 }

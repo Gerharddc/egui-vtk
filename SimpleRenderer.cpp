@@ -58,7 +58,7 @@ namespace
             // since our example here is not setting up the `glViewport`, we don't want
             // the vtkExternalOpenGLRenderWindow to update its size based on the
             // glViewport hence we must disable automatic position and size.
-            renWin->AutomaticWindowPositionAndResizeOff();
+            //renWin->AutomaticWindowPositionAndResizeOff();
 
             assert(renWin != nullptr);
             vtkNew<vtkCallbackCommand> callback;
