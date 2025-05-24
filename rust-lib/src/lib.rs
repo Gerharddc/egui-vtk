@@ -1,12 +1,19 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
+use eframe::egui::Rect;
 use eframe::{egui, egui_glow, glow};
 use egui::mutex::Mutex;
+use std::ffi::CStr;
+use std::fmt::Debug;
 use std::sync::Arc;
+use std::sync::OnceLock;
+use std::{ffi::c_void, os::raw::c_char};
+
+type LoaderFunc = extern "C" fn(name: *const c_char) -> *const c_void;
 
 #[link(name = "vtktest")]
 unsafe extern "C" {
-    fn vtk_new();
+    fn vtk_new(load: LoaderFunc);
     fn vtk_destroy();
     fn vtk_paint();
 }
@@ -18,7 +25,6 @@ pub extern "C" fn main() -> i32 {
         viewport: egui::ViewportBuilder::default().with_inner_size([350.0, 380.0]),
         multisampling: 4,
         depth_buffer: 24,
-        stencil_buffer: 8,
         renderer: eframe::Renderer::Glow,
         ..Default::default()
     };
@@ -44,8 +50,13 @@ impl MyApp {
             .gl
             .as_ref()
             .expect("You need to run eframe with the glow backend");
+
+        let get_proc_address = cc
+            .get_proc_address
+            .expect("You need to run eframe with the glow backend");
+
         Self {
-            vtk_widget: Arc::new(Mutex::new(VtkWidget::new(gl))),
+            vtk_widget: Arc::new(Mutex::new(VtkWidget::new(gl, get_proc_address))),
             angle: 0.0,
         }
     }
@@ -89,7 +100,7 @@ impl MyApp {
         let callback = egui::PaintCallback {
             rect,
             callback: std::sync::Arc::new(egui_glow::CallbackFn::new(move |_info, painter| {
-                rotating_triangle.lock().paint(painter.gl(), angle);
+                rotating_triangle.lock().paint(painter.gl(), angle, rect);
             })),
         };
         ui.painter().add(callback);
@@ -98,12 +109,42 @@ impl MyApp {
 
 struct VtkWidget {}
 
+struct Holder {
+    get_proc_address: &'static dyn Fn(&std::ffi::CStr) -> *const std::ffi::c_void,
+}
+
+impl Debug for Holder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Just some Holder...")
+    }
+}
+
+unsafe impl Sync for Holder {}
+unsafe impl Send for Holder {}
+
+static CELL: OnceLock<Holder> = OnceLock::new();
+
+pub extern "C" fn gl_load(name: *const c_char) -> *const c_void {
+    let name = unsafe { CStr::from_ptr(name) };
+    let holder = CELL.get().unwrap();
+    (holder.get_proc_address)(name)
+}
+
 impl VtkWidget {
-    fn new(_gl: &glow::Context) -> Self {
+    fn new(
+        _gl: &glow::Context,
+        get_proc_address: &dyn Fn(&std::ffi::CStr) -> *const std::ffi::c_void,
+    ) -> Self {
         //use glow::HasContext as _;
-        unsafe {
-            vtk_new();
-        };
+
+        CELL.set(Holder {
+            get_proc_address: unsafe { std::mem::transmute(get_proc_address) },
+        })
+        .unwrap();
+        unsafe { vtk_new(gl_load) };
+
+        // FIXME: make the cell empty again
+
         VtkWidget {}
     }
 
@@ -112,9 +153,64 @@ impl VtkWidget {
         unsafe { vtk_destroy() }
     }
 
-    fn paint(&self, _gl: &glow::Context, _angle: f32) {
-        //use glow::HasContext as _;
-        unsafe { vtk_paint() }
+    fn paint(&self, gl: &glow::Context, _angle: f32, rect: Rect) {
+        use glow::HasContext as _;
+
+        println!("Rect: {:#?}", rect);
+        println!(
+            "L: {}, B: {}, W: {}, H: {}",
+            rect.left(),
+            rect.bottom(),
+            rect.width(),
+            rect.height()
+        );
+
+        unsafe {
+            // Query current viewport settings
+            let mut viewport = [0; 4];
+            gl.get_parameter_i32_slice(glow::VIEWPORT, &mut viewport);
+
+            // viewport is a slice with 4 values: [x, y, width, height]
+            let x = viewport[0];
+            let y = viewport[1];
+            let width = viewport[2];
+            let height = viewport[3];
+
+            println!(
+                "Current viewport: x={}, y={}, width={}, height={}",
+                x, y, width, height
+            );
+
+            gl.enable(glow::DEPTH_TEST);
+
+            gl.enable(glow::SCISSOR_TEST);
+            gl.scissor(0, 0, 100, 100);
+            gl.clear_color(0.0, 1.0, 0.0, 1.0);
+            gl.clear(glow::COLOR_BUFFER_BIT);
+            gl.disable(glow::SCISSOR_TEST);
+
+            gl.clear_depth(1.0);
+            gl.clear(glow::DEPTH_BUFFER_BIT);
+
+            vtk_paint();
+
+            gl.disable(glow::DEPTH_TEST);
+
+            // Query current viewport settings
+            let mut viewport = [0; 4];
+            gl.get_parameter_i32_slice(glow::VIEWPORT, &mut viewport);
+
+            // viewport is a slice with 4 values: [x, y, width, height]
+            let x = viewport[0];
+            let y = viewport[1];
+            let width = viewport[2];
+            let height = viewport[3];
+
+            println!(
+                "Current viewport: x={}, y={}, width={}, height={}",
+                x, y, width, height
+            );
+        };
     }
 
     // TODO: add function to resize VTK

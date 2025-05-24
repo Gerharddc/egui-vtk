@@ -8,5 +8,5 @@ name = "vtk_rs"
 crate-type = ["staticlib"]
 
 [dependencies]
-eframe = "0.31.1"
+eframe = { git = "https://github.com/Gerharddc/egui.git" }
 env_logger = "0.11.8"
