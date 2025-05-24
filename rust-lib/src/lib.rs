@@ -14,6 +14,12 @@ unsafe extern "C" {
     fn vtk_destroy();
     fn vtk_paint();
     fn vtk_is_dirty() -> bool;
+
+    fn vtk_mouse_move(x: i32, y: i32);
+    fn vtk_mouse_press(button: i32, x: i32, y: i32);
+    fn vtk_mouse_release(button: i32, x: i32, y: i32);
+    fn vtk_mouse_wheel(delta: i32, x: i32, y: i32);
+    fn vtk_set_size(width: i32, height: i32);
 }
 
 #[unsafe(no_mangle)]
@@ -80,9 +86,105 @@ impl eframe::App for MyApp {
             });
 
             egui::Frame::canvas(ui.style()).show(ui, |ui| {
-                ui.add(vtk_img);
+                let response = ui.add(vtk_img.sense(egui::Sense::all()));
+                //println!("response: {:#?}", response);
+
+                let current_size = response.rect.size();
+                let width = current_size.x as i32;
+                let height = current_size.y as i32;
+
+                if width != self.vtk_widget.width || height != self.vtk_widget.height {
+                    println!("Updating size");
+
+                    unsafe {
+                        vtk_set_size(width, height);
+                    }
+                    self.vtk_widget.width = width;
+                    self.vtk_widget.height = height;
+                }
+
+                if response.hovered() {
+                    // TODO: this does not work
+                    if let Some(pos) = response.interact_pointer_pos() {
+                        println!("hover pos: {:#?}", pos);
+
+                        let image_rect = response.rect;
+                        let relative_pos = pos - image_rect.min;
+                        let x = relative_pos.x as i32;
+                        let y = relative_pos.y as i32;
+
+                        unsafe {
+                            vtk_mouse_move(x, y);
+                        }
+                    }
+                }
+
+                if response.drag_started() {
+                    let pos = response.interact_pointer_pos().unwrap();
+                    let image_rect = response.rect;
+                    let relative_pos = pos - image_rect.min;
+                    let x = relative_pos.x as i32;
+                    let y = relative_pos.y as i32;
+
+                    // Determine which button was pressed
+                    let button = if ui.input(|i| i.pointer.primary_down()) {
+                        0 // Left button
+                    } else if ui.input(|i| i.pointer.secondary_down()) {
+                        1 // Right button
+                    } else if ui.input(|i| i.pointer.middle_down()) {
+                        2 // Middle button
+                    } else {
+                        0 // Default to left
+                    };
+
+                    unsafe {
+                        vtk_mouse_press(button, x, y);
+                    }
+                }
+
+                if response.drag_stopped() {
+                    let pos = response.interact_pointer_pos().unwrap();
+                    let image_rect = response.rect;
+                    let relative_pos = pos - image_rect.min;
+                    let x = relative_pos.x as i32;
+                    let y = relative_pos.y as i32;
+
+                    // Determine which button was released
+                    let button = if response.clicked_by(egui::PointerButton::Primary) {
+                        0 // Left button
+                    } else if response.clicked_by(egui::PointerButton::Secondary) {
+                        1 // Right button
+                    } else if response.clicked_by(egui::PointerButton::Middle) {
+                        2 // Middle button
+                    } else {
+                        0 // Default to left
+                    };
+
+                    unsafe {
+                        vtk_mouse_release(button, x, y);
+                    }
+                }
+
+                let scroll_delta = ui.input(|i| i.raw_scroll_delta);
+                if scroll_delta.y != 0.0 && response.hovered() {
+                    if let Some(pos) = response.interact_pointer_pos() {
+                        let image_rect = response.rect;
+                        let relative_pos = pos - image_rect.min;
+                        let x = relative_pos.x as i32;
+                        let y = relative_pos.y as i32;
+
+                        // Convert scroll delta to integer (positive = forward, negative = backward)
+                        // TODO: consider sending multiple events if needed?
+                        let delta = if scroll_delta.y > 0.0 { 1 } else { -1 };
+
+                        unsafe {
+                            vtk_mouse_wheel(delta, x, y);
+                        }
+                    }
+                }
             });
-            ui.label("Drag to rotate!");
+
+            ui.label("Drag to rotate, wheel to zoom!");
         });
     }
 

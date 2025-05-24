@@ -9,19 +9,19 @@
 #include <vtkProperty.h>
 #include <vtkGenericOpenGLRenderWindow.h>
 #include <vtkRenderer.h>
+#include <vtkGenericRenderWindowInteractor.h>
+#include <vtkInteractorStyleTrackballCamera.h>
 
 #include "SimpleRenderer.h"
 
 namespace
 {
-    vtkGenericOpenGLRenderWindow *render_window;
+    vtkGenericOpenGLRenderWindow *render_window = nullptr;
+    vtkGenericRenderWindowInteractor *interactor = nullptr;
+
     bool initialized = false;
     bool dirty = true;
-
-    bool is_dirty()
-    {
-        return dirty;
-    }
+    int window_width, window_height;
 
     void MakeCurrentCallback(vtkObject *vtkNotUsed(caller), long unsigned int vtkNotUsed(eventId),
                              void *vtkNotUsed(clientData), void *vtkNotUsed(callData))
@@ -48,9 +48,18 @@ namespace
         vtkLogScopeFunction(INFO);
         vtkLogScopeF(INFO, "do-initialize");
 
+        window_width = width;
+        window_height = height;
+
         vtkNew<vtkRenderer> renderer;
         render_window->AddRenderer(renderer);
         render_window->SetSize(width, height);
+
+        interactor = vtkGenericRenderWindowInteractor::New();
+        interactor->SetRenderWindow(render_window);
+
+        vtkNew<vtkInteractorStyleTrackballCamera> style;
+        interactor->SetInteractorStyle(style);
 
         vtkNew<vtkCallbackCommand> make_current_cb;
         make_current_cb->SetCallback(MakeCurrentCallback);
@@ -116,5 +125,99 @@ void vtk_paint()
 
 bool vtk_is_dirty()
 {
-    return is_dirty();
+    return dirty;
+}
+
+void vtk_mouse_move(int x, int y)
+{
+    assert(initialized);
+    assert(interactor);
+
+    // VTK uses inverted Y coordinates (bottom-left origin)
+    int vtk_y = y; // window_height - y - 1;
+
+    interactor->SetEventPosition(x, vtk_y);
+    interactor->InvokeEvent(vtkCommand::MouseMoveEvent);
+}
+
+void vtk_mouse_press(int button, int x, int y)
+{
+    assert(initialized);
+    assert(interactor);
+
+    // VTK uses inverted Y coordinates (bottom-left origin)
+    int vtk_y = y; // window_height - y - 1;
+
+    interactor->SetEventPosition(x, vtk_y);
+
+    switch (button)
+    {
+    case 0: // Left button
+        interactor->InvokeEvent(vtkCommand::LeftButtonPressEvent);
+        break;
+    case 1: // Right button
+        interactor->InvokeEvent(vtkCommand::RightButtonPressEvent);
+        break;
+    case 2: // Middle button
+        interactor->InvokeEvent(vtkCommand::MiddleButtonPressEvent);
+        break;
+    }
+}
+
+void vtk_mouse_release(int button, int x, int y)
+{
+    assert(initialized);
+    assert(interactor);
+
+    // VTK uses inverted Y coordinates (bottom-left origin)
+    int vtk_y = y; // window_height - y - 1;
+
+    interactor->SetEventPosition(x, vtk_y);
+
+    switch (button)
+    {
+    case 0: // Left button
+        interactor->InvokeEvent(vtkCommand::LeftButtonReleaseEvent);
+        break;
+    case 1: // Right button
+        interactor->InvokeEvent(vtkCommand::RightButtonReleaseEvent);
+        break;
+    case 2: // Middle button
+        interactor->InvokeEvent(vtkCommand::MiddleButtonReleaseEvent);
+        break;
+    }
+}
+
+void vtk_mouse_wheel(int delta, int x, int y)
+{
+    assert(initialized);
+    assert(interactor);
+
+    // VTK uses inverted Y coordinates (bottom-left origin)
+    int vtk_y = y; // window_height - y - 1;
+
+    interactor->SetEventPosition(x, vtk_y);
+
+    if (delta > 0)
+    {
+        interactor->InvokeEvent(vtkCommand::MouseWheelForwardEvent);
+    }
+    else if (delta < 0)
+    {
+        interactor->InvokeEvent(vtkCommand::MouseWheelBackwardEvent);
+    }
+}
+
+void vtk_set_size(int width, int height)
+{
+    assert(initialized);
+
+    window_width = width;
+    window_height = height;
+    render_window->SetSize(width, height);
+
+    if (interactor)
+    {
+        interactor->SetSize(width, height);
+    }
 }
