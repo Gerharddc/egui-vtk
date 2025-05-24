@@ -110,13 +110,19 @@ pub extern "C" fn main() -> i32 {
                         gl.clear_color(0.0, 0.0, 0.0, 1.0);
                         gl.clear_depth(1.0);
                         gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
+                        gl.clear(COLOR_BUFFER_BIT);
 
                         vtk_paint();
 
                         gl_surface.swap_buffers(&gl_context).unwrap();
                     }
                     WindowEvent::Resized(physical_size) => {
-                        gl.viewport(0, 0, physical_size.width as i32, physical_size.height as i32);
+                        gl.viewport(
+                            0,
+                            0,
+                            physical_size.width as i32,
+                            physical_size.height as i32,
+                        );
                     }
                     _ => (),
                 }
