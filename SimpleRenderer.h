@@ -13,7 +13,7 @@ extern "C"
     void vtk_mouse_move(int x, int y);
     void vtk_mouse_press(int button, int x, int y);
     void vtk_mouse_release(int button, int x, int y);
-    void vtk_mouse_wheel(int delta, int x, int y);
+    void vtk_mouse_wheel(int delta);
     void vtk_set_size(int width, int height);
 
 #ifdef __cplusplus

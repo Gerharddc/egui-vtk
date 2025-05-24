@@ -130,25 +130,17 @@ bool vtk_is_dirty()
 
 void vtk_mouse_move(int x, int y)
 {
-    assert(initialized);
     assert(interactor);
 
-    // VTK uses inverted Y coordinates (bottom-left origin)
-    int vtk_y = y; // window_height - y - 1;
-
-    interactor->SetEventPosition(x, vtk_y);
+    interactor->SetEventPosition(x, y);
     interactor->InvokeEvent(vtkCommand::MouseMoveEvent);
 }
 
 void vtk_mouse_press(int button, int x, int y)
 {
-    assert(initialized);
     assert(interactor);
 
-    // VTK uses inverted Y coordinates (bottom-left origin)
-    int vtk_y = y; // window_height - y - 1;
-
-    interactor->SetEventPosition(x, vtk_y);
+    interactor->SetEventPosition(x, y);
 
     switch (button)
     {
@@ -166,13 +158,9 @@ void vtk_mouse_press(int button, int x, int y)
 
 void vtk_mouse_release(int button, int x, int y)
 {
-    assert(initialized);
     assert(interactor);
 
-    // VTK uses inverted Y coordinates (bottom-left origin)
-    int vtk_y = y; // window_height - y - 1;
-
-    interactor->SetEventPosition(x, vtk_y);
+    interactor->SetEventPosition(x, y);
 
     switch (button)
     {
@@ -188,15 +176,9 @@ void vtk_mouse_release(int button, int x, int y)
     }
 }
 
-void vtk_mouse_wheel(int delta, int x, int y)
+void vtk_mouse_wheel(int delta)
 {
-    assert(initialized);
     assert(interactor);
-
-    // VTK uses inverted Y coordinates (bottom-left origin)
-    int vtk_y = y; // window_height - y - 1;
-
-    interactor->SetEventPosition(x, vtk_y);
 
     if (delta > 0)
     {

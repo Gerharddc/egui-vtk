@@ -18,7 +18,7 @@ unsafe extern "C" {
     fn vtk_mouse_move(x: i32, y: i32);
     fn vtk_mouse_press(button: i32, x: i32, y: i32);
     fn vtk_mouse_release(button: i32, x: i32, y: i32);
-    fn vtk_mouse_wheel(delta: i32, x: i32, y: i32);
+    fn vtk_mouse_wheel(delta: i32);
     fn vtk_set_size(width: i32, height: i32);
 }
 
@@ -72,6 +72,8 @@ impl eframe::App for MyApp {
             self.vtk_widget.paint(frame.gl().unwrap(), 0.0);
         }
 
+        // TODO: think how DPI should affect the actual texture size
+
         let vtk_img = egui::Image::from_texture(SizedTexture::new(
             self.vtk_widget.texture_id(frame),
             [self.vtk_widget.width as f32, self.vtk_widget.height as f32],
@@ -87,7 +89,6 @@ impl eframe::App for MyApp {
 
             egui::Frame::canvas(ui.style()).show(ui, |ui| {
                 let response = ui.add(vtk_img.sense(egui::Sense::all()));
-                //println!("response: {:#?}", response);
 
                 let current_size = response.rect.size();
                 let width = current_size.x as i32;
@@ -104,17 +105,23 @@ impl eframe::App for MyApp {
                 }
 
                 if response.hovered() {
-                    // TODO: this does not work
-                    if let Some(pos) = response.interact_pointer_pos() {
-                        println!("hover pos: {:#?}", pos);
-
+                    if let Some(pos) = ui.input(|i| i.pointer.latest_pos()) {
                         let image_rect = response.rect;
                         let relative_pos = pos - image_rect.min;
                         let x = relative_pos.x as i32;
                         let y = relative_pos.y as i32;
 
+                        println!("hover pos: {}, {}", x, y);
+
                         unsafe {
                             vtk_mouse_move(x, y);
+                        }
+                    }
+
+                    let scroll_delta = ui.input(|i| i.raw_scroll_delta.y as i32);
+                    if scroll_delta != 0 {
+                        unsafe {
+                            vtk_mouse_wheel(scroll_delta);
                         }
                     }
                 }
@@ -162,24 +169,6 @@ impl eframe::App for MyApp {
 
                     unsafe {
                         vtk_mouse_release(button, x, y);
-                    }
-                }
-
-                let scroll_delta = ui.input(|i| i.raw_scroll_delta);
-                if scroll_delta.y != 0.0 && response.hovered() {
-                    if let Some(pos) = response.interact_pointer_pos() {
-                        let image_rect = response.rect;
-                        let relative_pos = pos - image_rect.min;
-                        let x = relative_pos.x as i32;
-                        let y = relative_pos.y as i32;
-
-                        // Convert scroll delta to integer (positive = forward, negative = backward)
-                        // TODO: consider sending multiple events if needed?
-                        let delta = if scroll_delta.y > 0.0 { 1 } else { -1 };
-
-                        unsafe {
-                            vtk_mouse_wheel(delta, x, y);
-                        }
                     }
                 }
             });
