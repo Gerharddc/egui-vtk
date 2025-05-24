@@ -1,90 +1,92 @@
-#include <iostream>
-
 #include <vtk_glad.h>
-
-#include <ExternalVTKWidget.h>
 #include <vtkActor.h>
 #include <vtkCallbackCommand.h>
 #include <vtkCamera.h>
 #include <vtkCubeSource.h>
-#include <vtkExternalOpenGLRenderWindow.h>
-#include <vtkLight.h>
 #include <vtkLogger.h>
 #include <vtkNew.h>
 #include <vtkPolyDataMapper.h>
-#include <vtkTesting.h>
+#include <vtkProperty.h>
+#include <vtkGenericOpenGLRenderWindow.h>
+#include <vtkRenderer.h>
 
 #include "SimpleRenderer.h"
 
 namespace
 {
-
-    // Global variables used by the glutDisplayFunc and glutIdleFunc
-    ExternalVTKWidget *externalVTKWidget = nullptr;
+    vtkGenericOpenGLRenderWindow *render_window;
     bool initialized = false;
-    int NumArgs;
-    char **ArgV;
-    bool tested = false;
-    int retVal = 0;
-    int windowId = -1;
-    int windowH = 301;
-    int windowW = 300;
+    bool dirty = true;
+
+    bool is_dirty()
+    {
+        return dirty;
+    }
 
     void MakeCurrentCallback(vtkObject *vtkNotUsed(caller), long unsigned int vtkNotUsed(eventId),
                              void *vtkNotUsed(clientData), void *vtkNotUsed(callData))
     {
-        vtkLogScopeFunction(1);
-        if (initialized)
-        {
-            // TODO
-            // glutSetWindow(windowId);
-        }
+        // TODO: perhaps we should actually do something here?
     }
 
-    /* Handler for window-repaint event. Call back when the window first appears and
-       whenever the window needs to be re-painted. */
+    void IsCurrentCallback(vtkObject *vtkNotUsed(caller), long unsigned int vtkNotUsed(eventId),
+                           void *vtkNotUsed(clientData), void *callData)
+    {
+        // TODO: perhaps we should actually do something here?
+        *(static_cast<bool *>(callData)) = true;
+    }
+
+    void FrameCallback(vtkObject *vtkNotUsed(caller), long unsigned int vtkNotUsed(eventId),
+                       void *vtkNotUsed(clientData), void *vtkNotUsed(callData))
+    {
+        // FIXME: we should also actively send a redraw request to egui
+        dirty = true;
+    }
+
+    void init(int width, int height)
+    {
+        vtkLogScopeFunction(INFO);
+        vtkLogScopeF(INFO, "do-initialize");
+
+        vtkNew<vtkRenderer> renderer;
+        render_window->AddRenderer(renderer);
+        render_window->SetSize(width, height);
+
+        vtkNew<vtkCallbackCommand> make_current_cb;
+        make_current_cb->SetCallback(MakeCurrentCallback);
+        render_window->AddObserver(vtkCommand::WindowMakeCurrentEvent, make_current_cb);
+
+        vtkNew<vtkCallbackCommand> is_current_cb;
+        is_current_cb->SetCallback(IsCurrentCallback);
+        render_window->AddObserver(vtkCommand::WindowIsCurrentEvent, is_current_cb);
+
+        vtkNew<vtkCallbackCommand> frame_cb;
+        frame_cb->SetCallback(FrameCallback);
+        render_window->AddObserver(vtkCommand::WindowFrameEvent, frame_cb);
+
+        vtkNew<vtkPolyDataMapper> mapper;
+        vtkNew<vtkActor> actor;
+        actor->SetMapper(mapper);
+        renderer->AddActor(actor);
+        vtkNew<vtkCubeSource> cs;
+        mapper->SetInputConnection(cs->GetOutputPort());
+        actor->RotateX(45.0);
+        actor->RotateY(45.0);
+        actor->GetProperty()->SetColor(0.8, 0.2, 0.2);
+        renderer->ResetCamera();
+        renderer->SetAutomaticLightCreation(true);
+
+        initialized = true;
+    }
+
     void display()
     {
         vtkLogScopeFunction(INFO);
-        if (!initialized)
-        {
-            vtkLogScopeF(INFO, "do-initialize");
-            // since `handleResize` may get called before display, we may have already
-            // created and resized the vtkExternalOpenGLRenderWindow, hence we don't
-            // recreate it here.
-            auto renWin = externalVTKWidget->GetRenderWindow();
-
-            // since our example here is not setting up the `glViewport`, we don't want
-            // the vtkExternalOpenGLRenderWindow to update its size based on the
-            // glViewport hence we must disable automatic position and size.
-            renWin->AutomaticWindowPositionAndResizeOff();
-
-            assert(renWin != nullptr);
-            vtkNew<vtkCallbackCommand> callback;
-            callback->SetCallback(MakeCurrentCallback);
-            renWin->AddObserver(vtkCommand::WindowMakeCurrentEvent, callback);
-            vtkNew<vtkPolyDataMapper> mapper;
-            vtkNew<vtkActor> actor;
-            actor->SetMapper(mapper);
-            vtkRenderer *ren = externalVTKWidget->AddRenderer();
-            ren->AddActor(actor);
-            vtkNew<vtkCubeSource> cs;
-            mapper->SetInputConnection(cs->GetOutputPort());
-            actor->RotateX(45.0);
-            actor->RotateY(45.0);
-            ren->ResetCamera();
-
-            initialized = true;
-        }
-
         vtkLogScopeF(INFO, "do-vtk-render");
-        externalVTKWidget->GetRenderWindow()->Render();
-    }
 
-    void handleResize(int w, int h)
-    {
-        vtkLogScopeF(INFO, "handleResize: %d, %d", w, h);
-        externalVTKWidget->GetRenderWindow()->SetSize(w, h);
+        assert(initialized);
+        render_window->Render();
+        dirty = false;
     }
 
     void onexit()
@@ -94,20 +96,25 @@ namespace
 
 } // end anon namespace
 
-void vtk_new()
+void vtk_new(LoaderFunc load, int width, int height)
 {
-    externalVTKWidget = ExternalVTKWidget::New();
-    gladLoaderLoadGL();
-    handleResize(300, 300);
+    gladLoadGL(load);
+    render_window = vtkGenericOpenGLRenderWindow::New();
+    init(width, height);
 }
 
 void vtk_destroy()
 {
     onexit();
-    externalVTKWidget->Delete();
+    render_window->Delete();
 }
 
 void vtk_paint()
 {
     display();
+}
+
+bool vtk_is_dirty()
+{
+    return is_dirty();
 }
