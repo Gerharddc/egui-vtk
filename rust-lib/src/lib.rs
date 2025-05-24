@@ -110,7 +110,6 @@ pub extern "C" fn main() -> i32 {
                         gl.clear_color(0.0, 0.0, 0.0, 1.0);
                         gl.clear_depth(1.0);
                         gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
-                        gl.clear(COLOR_BUFFER_BIT);
 
                         vtk_paint();
 
