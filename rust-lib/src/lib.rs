@@ -193,7 +193,7 @@ impl VtkWidget {
 
             gl.bind_framebuffer(glow::FRAMEBUFFER, None);
 
-            // FIXME: make the cell empty again
+            // FIXME: clear PROC_FN_CELL since it is not safe to use after this point...
 
             VtkWidget {
                 fbo,
